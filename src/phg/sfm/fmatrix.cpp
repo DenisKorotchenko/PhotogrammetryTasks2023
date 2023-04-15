@@ -64,9 +64,11 @@ namespace {
         Eigen::JacobiSVD<Eigen::MatrixXd> svdf(F, Eigen::ComputeFullU | Eigen::ComputeFullV);
 
         Eigen::Matrix<double, 3, 3> newD;
+        newD.setZero();
         //Eigen::DiagonalMatrix<double, 3> newD;
         newD(0, 0) = svdf.singularValues()[0];
         newD(1, 1) = svdf.singularValues()[1];
+//        std::cout << "newD\n" << newD << "\n";
         F = svdf.matrixU() * newD * svdf.matrixV().transpose();
 //
         cv::Matx33d Fcv;
@@ -79,9 +81,24 @@ namespace {
     // (см. Hartley & Zisserman p.107 Why is normalization essential?)
     cv::Matx33d getNormalizeTransform(const std::vector<cv::Vec2d> &m)
     {
-        cv::Matx33d transMat = cv::Matx33d::zeros();
-        transMat(2, 2) = 1;
+        cv::Scalar_<double> mean, std2;
+        cv::meanStdDev(m, mean, std2);
+        double std = sqrt(std2(0) * std2(0) + std2(1) * std2(1)) / sqrt(2);
 
+        matrix3d T;
+        T(0, 0) = 1 / std;
+        T(0, 1) = 0;
+        T(0, 2) = -mean(0) / std;
+        T(1, 0) = 0;
+        T(1, 1) = 1 / std;
+        T(1, 2) = -mean(1) / std;
+        T(2, 0) = 0;
+        T(2, 1) = 0;
+        T(2, 2) = 1;
+
+        return T;
+
+        cv::Matx33d transMat = cv::Matx33d::zeros();
         for (int i = 0; i < 2; i++) {
             double curMean = 0;
             for (const auto & j : m) {
@@ -93,9 +110,9 @@ namespace {
                 std += (j[i] - curMean) * (j[i] - curMean);
             std = std::sqrt(std / m.size());
             transMat(i, i) = std::sqrt(2) / std;
-            transMat(3, i) = transMat(i, i) * curMean * (-1);
+            transMat(2, i) = transMat(i, i) * curMean * (-1);
         }
-
+        transMat(2, 2) = 1;
         return transMat;
         //throw std::runtime_error("not implemented yet");
     }
@@ -159,7 +176,7 @@ namespace {
             cv::Matx33d F = estimateFMatrixDLT(ms0, ms1, n_samples);
 
             // denormalize
-            F = (TN1.t() * F * TN0).t();
+            F = (TN1.t() * F * TN0);
 //
             int support = 0;
             for (int i = 0; i < n_matches; ++i) {
